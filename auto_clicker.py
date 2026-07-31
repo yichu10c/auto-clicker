@@ -233,6 +233,7 @@ def start_listening():
     root.after(100, check_key_press)
 
 def check_key_press():
+    global listener
     if waiting_for_key.is_set():
         nonlocal_hotkey_key = pending_key.get('vk', 0x2D)
         nonlocal_hotkey_name = pending_key.get('name', 'INSERT')
@@ -240,7 +241,6 @@ def check_key_press():
         if listener is not None:
             listener.stop()
             listener = None
-        global hotkey_key, hotkey_name
         hotkey_key = nonlocal_hotkey_key
         hotkey_name = nonlocal_hotkey_name
         hotkey_display.config(text=hotkey_name)
