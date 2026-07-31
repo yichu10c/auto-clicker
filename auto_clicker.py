@@ -234,11 +234,18 @@ def start_listening():
 
 def check_key_press():
     if waiting_for_key.is_set():
-        hotkey_key = pending_key.get('vk', 0x2D)
-        hotkey_name = pending_key.get('name', 'INSERT')
+        nonlocal_hotkey_key = pending_key.get('vk', 0x2D)
+        nonlocal_hotkey_name = pending_key.get('name', 'INSERT')
+        # Stop existing listener BEFORE updating globals and starting new one
+        if listener is not None:
+            listener.stop()
+            listener = None
+        global hotkey_key, hotkey_name
+        hotkey_key = nonlocal_hotkey_key
+        hotkey_name = nonlocal_hotkey_name
         hotkey_display.config(text=hotkey_name)
         listen_label.config(text="")
-        start_listener()   # restart listener with new hotkey
+        start_listener()
     else:
         root.after(100, check_key_press)
 
