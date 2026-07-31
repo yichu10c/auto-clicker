@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Auto Clicker — ctypes version (no pynput needed on Windows)
-Works on Windows (pure ctypes) and Unix (pynput fallback).
+Auto Clicker — ctypes version
+- Press any key to set it as hotkey
+- Toggle mode OR press-to-hold mode
 """
 import ctypes
 import threading
@@ -9,17 +10,20 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
-# ── Platform setup ────────────────────────────────────────────────────────────
 PLATFORM = 'windows' if hasattr(ctypes, 'windll') else 'unix'
 
 # ── State ─────────────────────────────────────────────────────────────────────
 clicking = False
 cps = 5.0
-hotkey_key = 0x2D       # VK_INSERT — not intercepted by console
+mode = 'hold'          # 'hold' or 'toggle'
+hotkey_key = 0x2D       # VK_INSERT
+hotkey_name = 'INSERT'
+key_was_down = False
+
 target_x = target_y = None
 click_position_set = False
 
-# ── Windows ctypes helpers ────────────────────────────────────────────────────
+# ── Windows ctypes ────────────────────────────────────────────────────────────
 if PLATFORM == 'windows':
     user32 = ctypes.windll.user32
     MOUSEEVENTF_LEFTDOWN = 0x0002
@@ -38,7 +42,7 @@ if PLATFORM == 'windows':
         user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
         user32.mouse_event(MOUSEEVENTF_LEFTUP,   0, 0, 0, 0)
 
-# ── Unix mouse via pynput ────────────────────────────────────────────────────
+# ── Unix mouse ────────────────────────────────────────────────────────────────
 _mouse = None
 def unix_click(x, y):
     global _mouse
@@ -59,21 +63,80 @@ def click_worker():
             else:
                 unix_click(target_x, target_y)
 
-# ── Hotkey polling (Windows) ───────────────────────────────────────────────────
+# ── Hotkey polling ────────────────────────────────────────────────────────────
 def hotkey_poll():
+    global clicking, key_was_down, target_x, target_y, click_position_set
+
     while True:
-        if user32.GetAsyncKeyState(hotkey_key) & 0x8000:
-            global clicking, click_position_set, target_x, target_y
-            if not clicking:
+        is_down = (user32.GetAsyncKeyState(hotkey_key) & 0x8000) != 0 if PLATFORM == 'windows' else False
+
+        if mode == 'hold':
+            if is_down and not key_was_down:
+                # Just pressed
                 target_x, target_y = get_cursor_pos()
                 click_position_set = True
                 clicking = True
-                root.after(0, lambda: status_label.config(text=f"▶ clicking @ {cps:.1f} CPS"))
-            else:
+                root.after(0, lambda: status_label.config(
+                    text=f"▶ clicking @ {cps:.1f} CPS  [{hotkey_name}]"))
+            elif not is_down and key_was_down:
+                # Just released
                 clicking = False
-                root.after(0, lambda: status_label.config(text="⏹ stopped"))
-            time.sleep(0.25)
+                root.after(0, lambda: status_label.config(
+                    text="⏹ stopped  — release and hold hotkey to click"))
+        else:
+            # toggle
+            if is_down and not key_was_down:
+                if not clicking:
+                    target_x, target_y = get_cursor_pos()
+                    click_position_set = True
+                    clicking = True
+                    root.after(0, lambda: status_label.config(
+                        text=f"▶ clicking @ {cps:.1f} CPS  [{hotkey_name}] (press to stop)"))
+                else:
+                    clicking = False
+                    root.after(0, lambda: status_label.config(
+                        text="⏹ stopped"))
+                time.sleep(0.25)  # debounce
+
+        key_was_down = is_down
         time.sleep(0.01)
+
+# ── Set hotkey by pressing any key ───────────────────────────────────────────
+waiting_for_key = threading.Event()
+pending_key = {}
+
+def capture_key():
+    """Poll for any key press, store it, signal waiting GUI."""
+    while not waiting_for_key.is_set():
+        for code in range(1, 256):
+            if (user32.GetAsyncKeyState(code) & 0x8000) != 0:
+                name = vk_to_name(code)
+                pending_key['code'] = code
+                pending_key['name'] = name
+                waiting_for_key.set()
+                return
+        time.sleep(0.01)
+
+VK_NAMES = {
+    0x08: 'BACKSPACE', 0x09: 'TAB', 0x0D: 'ENTER', 0x1B: 'ESC',
+    0x20: 'SPACE', 0x21: 'PAGE UP', 0x22: 'PAGE DOWN', 0x23: 'END',
+    0x24: 'HOME', 0x25: 'LEFT', 0x26: 'UP', 0x27: 'RIGHT', 0x28: 'DOWN',
+    0x2D: 'INSERT', 0x2E: 'DELETE',
+    0x30: '0', 0x31: '1', 0x32: '2', 0x33: '3', 0x34: '4',
+    0x35: '5', 0x36: '6', 0x37: '7', 0x38: '8', 0x39: '9',
+    0x41: 'A', 0x42: 'B', 0x43: 'C', 0x44: 'D', 0x45: 'E',
+    0x46: 'F', 0x47: 'G', 0x48: 'H', 0x49: 'I', 0x4A: 'J',
+    0x4B: 'K', 0x4C: 'L', 0x4D: 'M', 0x4E: 'N', 0x4F: 'O',
+    0x50: 'P', 0x51: 'Q', 0x52: 'R', 0x53: 'S', 0x54: 'T',
+    0x55: 'U', 0x56: 'V', 0x57: 'W', 0x58: 'X', 0x59: 'Y', 0x5A: 'Z',
+}
+for i in range(0x70, 0x88):
+    VK_NAMES[i] = f'F{i - 0x70 + 1}'
+
+def vk_to_name(code):
+    if code in VK_NAMES:
+        return VK_NAMES[code]
+    return f'KEY_{code}'
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
 root = tk.Tk()
@@ -87,7 +150,7 @@ main.pack(fill=tk.BOTH)
 # CPS
 ttk.Label(main, text="Clicks Per Second:", font=('Segoe UI', 11, 'bold')).pack(anchor='w')
 cps_frame = ttk.Frame(main)
-cps_frame.pack(fill=tk.X, pady=(4, 12))
+cps_frame.pack(fill=tk.X, pady=(4, 10))
 cps_slider = ttk.Scale(cps_frame, from_=1, to=50, orient='horizontal')
 cps_slider.set(cps)
 cps_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -102,60 +165,67 @@ def on_cps_changed(*_):
 cps_slider.bind('<Motion>', on_cps_changed)
 cps_slider.bind('<ButtonRelease-1>', on_cps_changed)
 
-# Hotkey
-ttk.Label(main, text="Hotkey:", font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(8, 0))
-hotkey_frame = ttk.Frame(main)
-hotkey_frame.pack(fill=tk.X, pady=(4, 12))
+# Mode selection
+ttk.Label(main, text="Click Mode:", font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(4, 4))
 
-hotkey_display = ttk.Label(hotkey_frame, text="INSERT", font=('Segoe UI', 10))
+mode_frame = ttk.Frame(main)
+mode_frame.pack(fill=tk.X, pady=(0, 10))
+
+mode_var = tk.StringVar(value='hold')
+
+def on_mode_changed():
+    global mode
+    mode = mode_var.get()
+    desc = "Release hotkey to stop" if mode == 'hold' else "Press hotkey to toggle"
+    status_label.config(text=f"Mode: {desc}")
+
+ttk.Radiobutton(mode_frame, text="Hold     — hold key to click, release to stop",
+               variable=mode_var, value='hold', command=on_mode_changed).pack(anchor='w')
+ttk.Radiobutton(mode_frame, text="Toggle   — press key to start, press again to stop",
+               variable=mode_var, value='toggle', command=on_mode_changed).pack(anchor='w')
+
+# Hotkey
+ttk.Label(main, text="Hotkey:", font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(4, 0))
+hotkey_frame = ttk.Frame(main)
+hotkey_frame.pack(fill=tk.X, pady=(4, 10))
+
+hotkey_display = ttk.Label(hotkey_frame, text='INSERT', font=('Segoe UI', 10, 'bold'))
 hotkey_display.pack(side=tk.LEFT)
 
-VK_MAP = {
-    'INSERT':    0x2D,
-    'DELETE':    0x2E,
-    'HOME':      0x24,
-    'END':       0x23,
-    'PAGE UP':   0x21,
-    'PAGE DOWN': 0x22,
-    'F9':        0x7A,
-    'F10':       0x79,
-    'F11':       0x7B,
-    'F12':       0x7C,
-}
+listen_label = tk.Label(hotkey_frame, text="", font=('Segoe UI', 8), fg='#888')
+listen_label.pack(side=tk.LEFT, padx=(8, 0))
 
-def set_hotkey(name, vk):
-    global hotkey_key
-    hotkey_key = vk
-    hotkey_display.config(text=name)
+def start_listening():
+    global hotkey_key, hotkey_name
+    listen_label.config(text="(press any key...)")
+    waiting_for_key.clear()
+    pending_key.clear()
+    t = threading.Thread(target=capture_key, daemon=True)
+    t.start()
+    root.after(100, check_key_press)
 
-# Use a simple dropdown (OptionMenu) instead of a broken menu button
-def show_hotkey_menu():
-    menu = tk.Toplevel(root)
-    menu.title("Choose Hotkey")
-    menu.resizable(False, False)
-    menu.attributes('-topmost', True)
-    x = root.winfo_rootx() + hotkey_frame.winfo_x()
-    y = root.winfo_rooty() + hotkey_frame.winfo_y() + hotkey_frame.winfo_height()
-    menu.geometry(f"+{x}+{y}")
+def check_key_press():
+    if waiting_for_key.is_set():
+        pending = pending_key.copy()
+        waiting_for_key.clear()
+        hotkey_key = pending['code']
+        hotkey_name = pending['name']
+        hotkey_display.config(text=hotkey_name)
+        listen_label.config(text="")
+    else:
+        root.after(100, check_key_press)
 
-    for name, vk in VK_MAP.items():
-        tk.Button(menu, text=name, font=('Segoe UI', 10),
-                   command=lambda n=name, v=vk: [set_hotkey(n, v), menu.destroy()],
-                   width=12).pack(padx=4, pady=2)
-
-    tk.Button(menu, text="Cancel", font=('Segoe UI', 9),
-               command=menu.destroy).pack(pady=(4, 0))
-
-ttk.Button(hotkey_frame, text="Change", width=8, command=show_hotkey_menu).pack(side=tk.LEFT, padx=(8, 0))
+ttk.Button(hotkey_frame, text="Set Hotkey", width=10, command=start_listening).pack(side=tk.LEFT, padx=(8, 0))
 
 # Status
 ttk.Separator(main, orient='horizontal').pack(fill=tk.X, pady=(0, 10))
-status_label = ttk.Label(main, text="⏹ idle — hover mouse, hold HOTKEY to click",
-                         font=('Segoe UI', 10), anchor='center', wraplength=220)
+status_label = ttk.Label(main,
+    text="⏹ idle — hover mouse, hold hotkey to click",
+    font=('Segoe UI', 10), anchor='center', wraplength=240)
 status_label.pack(fill=tk.X)
 
-ttk.Label(main, text="1. Set CPS above\n2. Hover mouse over click target\n3. Hold HOTKEY to auto-click",
-          font=('Segoe UI', 8), foreground='#666').pack(pady=(8, 0))
+ttk.Label(main, text="1. Set CPS\n2. Set hotkey (click Set Hotkey, then press any key)\n3. Choose Hold or Toggle mode",
+          font=('Segoe UI', 8), foreground='#666').pack(pady=(4, 0))
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 threading.Thread(target=click_worker, daemon=True).start()
