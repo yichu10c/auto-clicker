@@ -32,7 +32,6 @@ waiting_for_key = threading.Event()
 captured_key = {}
 
 # Active listener (stopped+restarted on hotkey change)
-_listener_lock = threading.Lock()
 _listener = None
 
 # ── Windows mouse ─────────────────────────────────────────────────────────────
@@ -159,20 +158,19 @@ def on_release(key):
 
 # ── Listener lifecycle ────────────────────────────────────────────────────────
 def stop_listener():
-    with _listener_lock:
-        if _listener is not None:
-            _listener.stop()
-            _listener = None
+    global _listener
+    if _listener is not None:
+        _listener.stop()
+        _listener = None
 
 def start_listener():
+    global _listener
     stop_listener()
-    with _listener_lock:
-        global _listener
-        _listener = keyboard.Listener(
-            on_press=on_press,
-            on_release=on_release,
-            suppress=False)
-        _listener.start()
+    _listener = keyboard.Listener(
+        on_press=on_press,
+        on_release=on_release,
+        suppress=False)
+    _listener.start()
 
 # ── Capture any key (blocks until key pressed) ─────────────────────────────────
 def capture_key():
