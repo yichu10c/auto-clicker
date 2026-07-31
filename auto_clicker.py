@@ -2,7 +2,6 @@
 """
 Auto Clicker — ctypes version (no pynput needed on Windows)
 Works on Windows (pure ctypes) and Unix (pynput fallback).
-No external dependencies on Windows. Single executable when packaged.
 """
 import ctypes
 import threading
@@ -15,10 +14,9 @@ PLATFORM = 'windows' if hasattr(ctypes, 'windll') else 'unix'
 
 # ── State ─────────────────────────────────────────────────────────────────────
 clicking = False
-stop_event = threading.Event()
 cps = 5.0
-hotkey_key = 0x7A  # VK_F9
-target_x, target_y = None, None
+hotkey_key = 0x2D       # VK_INSERT — not intercepted by console
+target_x = target_y = None
 click_position_set = False
 
 # ── Windows ctypes helpers ────────────────────────────────────────────────────
@@ -26,12 +24,11 @@ if PLATFORM == 'windows':
     user32 = ctypes.windll.user32
     MOUSEEVENTF_LEFTDOWN = 0x0002
     MOUSEEVENTF_LEFTUP   = 0x0004
-    PMB = ctypes.POINTER(ctypes.c_byte)
+
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
     def get_cursor_pos():
-        pt = ctypes.Structure
-        class POINT(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
         pt = POINT()
         user32.GetCursorPos(ctypes.byref(pt))
         return pt.x, pt.y
@@ -54,7 +51,8 @@ def unix_click(x, y):
 # ── Click worker ───────────────────────────────────────────────────────────────
 def click_worker():
     interval = 1.0 / cps
-    while not stop_event.wait(interval):
+    while True:
+        time.sleep(interval)
         if clicking and click_position_set:
             if PLATFORM == 'windows':
                 win_click(target_x, target_y)
@@ -63,7 +61,7 @@ def click_worker():
 
 # ── Hotkey polling (Windows) ───────────────────────────────────────────────────
 def hotkey_poll():
-    while not stop_event.is_set():
+    while True:
         if user32.GetAsyncKeyState(hotkey_key) & 0x8000:
             global clicking, click_position_set, target_x, target_y
             if not clicking:
@@ -74,7 +72,7 @@ def hotkey_poll():
             else:
                 clicking = False
                 root.after(0, lambda: status_label.config(text="⏹ stopped"))
-            time.sleep(0.3)
+            time.sleep(0.25)
         time.sleep(0.01)
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
@@ -108,14 +106,21 @@ cps_slider.bind('<ButtonRelease-1>', on_cps_changed)
 ttk.Label(main, text="Hotkey:", font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(8, 0))
 hotkey_frame = ttk.Frame(main)
 hotkey_frame.pack(fill=tk.X, pady=(4, 12))
-hotkey_display = ttk.Label(hotkey_frame, text="F9", font=('Segoe UI', 10))
+
+hotkey_display = ttk.Label(hotkey_frame, text="INSERT", font=('Segoe UI', 10))
 hotkey_display.pack(side=tk.LEFT)
 
 VK_MAP = {
-    'F9': 0x7A, 'F10': 0x79, 'F11': 0x7B, 'F12': 0x7C,
-    'Insert': 0x2D, 'Delete': 0x2E, 'Home': 0x24, 'End': 0x23,
-    'Page Up': 0x21, 'Page Down': 0x22,
-    'Shift R': 0xA1, 'Ctrl R': 0xA3, 'Alt R': 0xA5,
+    'INSERT':    0x2D,
+    'DELETE':    0x2E,
+    'HOME':      0x24,
+    'END':       0x23,
+    'PAGE UP':   0x21,
+    'PAGE DOWN': 0x22,
+    'F9':        0x7A,
+    'F10':       0x79,
+    'F11':       0x7B,
+    'F12':       0x7C,
 }
 
 def set_hotkey(name, vk):
@@ -123,14 +128,25 @@ def set_hotkey(name, vk):
     hotkey_key = vk
     hotkey_display.config(text=name)
 
-hotkey_menu = tk.Menu(root, tearoff=0)
-for name, vk in VK_MAP.items():
-    hotkey_menu.add_command(label=name, command=lambda n=name, v=vk: set_hotkey(n, v))
+# Use a simple dropdown (OptionMenu) instead of a broken menu button
+def show_hotkey_menu():
+    menu = tk.Toplevel(root)
+    menu.title("Choose Hotkey")
+    menu.resizable(False, False)
+    menu.attributes('-topmost', True)
+    x = root.winfo_rootx() + hotkey_frame.winfo_x()
+    y = root.winfo_rooty() + hotkey_frame.winfo_y() + hotkey_frame.winfo_height()
+    menu.geometry(f"+{x}+{y}")
 
-# ttk.Button menu trick — use tk.Menubutton
-menubutton = tk.Menubutton(hotkey_frame, text="Change", direction='left')
-menubutton['menu'] = hotkey_menu
-menubutton.pack(side=tk.LEFT, padx=(8, 0))
+    for name, vk in VK_MAP.items():
+        tk.Button(menu, text=name, font=('Segoe UI', 10),
+                   command=lambda n=name, v=vk: [set_hotkey(n, v), menu.destroy()],
+                   width=12).pack(padx=4, pady=2)
+
+    tk.Button(menu, text="Cancel", font=('Segoe UI', 9),
+               command=menu.destroy).pack(pady=(4, 0))
+
+ttk.Button(hotkey_frame, text="Change", width=8, command=show_hotkey_menu).pack(side=tk.LEFT, padx=(8, 0))
 
 # Status
 ttk.Separator(main, orient='horizontal').pack(fill=tk.X, pady=(0, 10))
