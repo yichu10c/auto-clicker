@@ -66,7 +66,7 @@ def click_worker():
 # ── Hotkey polling ────────────────────────────────────────────────────────────
 def hotkey_poll():
     global clicking, key_was_down, target_x, target_y, click_position_set
-
+    print("[DEBUG] hotkey_poll started, key =", hotkey_key)
     while True:
         is_down = (user32.GetAsyncKeyState(hotkey_key) & 0x8000) != 0 if PLATFORM == 'windows' else False
 
