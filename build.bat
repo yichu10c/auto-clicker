@@ -1,6 +1,6 @@
 @echo off
 echo Installing dependencies...
-pip install pynput pyinstaller
+pip install pyinstaller
 
 echo.
 echo Building executable...
