@@ -76,11 +76,13 @@ def hotkey_poll():
                 target_x, target_y = get_cursor_pos()
                 click_position_set = True
                 clicking = True
+                print(f"[DEBUG] HOLD pressed → pos=({target_x},{target_y})")
                 root.after(0, lambda: status_label.config(
                     text=f"▶ clicking @ {cps:.1f} CPS  [{hotkey_name}]"))
             elif not is_down and key_was_down:
                 # Just released
                 clicking = False
+                print("[DEBUG] HOLD released")
                 root.after(0, lambda: status_label.config(
                     text="⏹ stopped  — release and hold hotkey to click"))
         else:
@@ -90,10 +92,12 @@ def hotkey_poll():
                     target_x, target_y = get_cursor_pos()
                     click_position_set = True
                     clicking = True
+                    print(f"[DEBUG] TOGGLE on → pos=({target_x},{target_y})")
                     root.after(0, lambda: status_label.config(
                         text=f"▶ clicking @ {cps:.1f} CPS  [{hotkey_name}] (press to stop)"))
                 else:
                     clicking = False
+                    print("[DEBUG] TOGGLE off")
                     root.after(0, lambda: status_label.config(
                         text="⏹ stopped"))
                 time.sleep(0.25)  # debounce
