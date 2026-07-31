@@ -231,8 +231,9 @@ mode_frame.pack(fill=tk.X, pady=(0, 10))
 mode_var = tk.StringVar(value='hold')
 
 def on_mode_changed():
-    global mode, clicking
+    global mode, clicking, key_was_down
     mode = mode_var.get()
+    key_was_down = False   # reset so next press is always clean
     if not clicking:
         desc = "hold hotkey to click, release to stop" if mode == 'hold' else "press hotkey to toggle on/off"
         status_label.config(text=f"Mode: {desc}")
