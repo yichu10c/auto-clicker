@@ -72,18 +72,11 @@ def on_press(key):
     global clicking, key_was_down, target_x, target_y, click_position_set, hotkey_key, hotkey_name
 
     try:
-        vk = key.vk if hasattr(key, 'vk') else key.value.vk if hasattr(key.value, 'vk') else None
+        vk = key.vk if hasattr(key, 'vk') and key.vk is not None else int(key)
     except Exception:
-        vk = None
+        return
+    print(f"[DEBUG] on_press vk={vk} hotkey={hotkey_key}")
 
-    # Normalise to vk number
-    if vk is None:
-        try:
-            vk = key.value.vk
-        except Exception:
-            return
-
-    # Check if this is our hotkey
     if vk != hotkey_key:
         return
 
@@ -96,7 +89,6 @@ def on_press(key):
             root.after(0, lambda: status_label.config(
                 text=f"▶ clicking @ {cps:.1f} CPS  [{hotkey_name}]"))
     else:
-        # toggle
         if not key_was_down:
             key_was_down = True
             if not clicking:
@@ -113,15 +105,9 @@ def on_release(key):
     global clicking, key_was_down
 
     try:
-        vk = key.vk if hasattr(key, 'vk') else key.value.vk if hasattr(key.value, 'vk') else None
+        vk = key.vk if hasattr(key, 'vk') and key.vk is not None else int(key)
     except Exception:
-        vk = None
-
-    if vk is None:
-        try:
-            vk = key.value.vk
-        except Exception:
-            return
+        return
 
     if vk != hotkey_key:
         return
@@ -169,14 +155,9 @@ def capture_key_thread():
 
     def on_press(key):
         try:
-            vk = key.vk if hasattr(key, 'vk') else key.value.vk if hasattr(key.value, 'vk') else None
+            vk = key.vk if hasattr(key, 'vk') and key.vk is not None else int(key)
         except Exception:
-            vk = None
-        if vk is None:
-            try:
-                vk = key.value.vk
-            except Exception:
-                return
+            return
         captured['vk'] = vk
         captured['name'] = vk_to_name(vk)
         waiting_for_key.set()
