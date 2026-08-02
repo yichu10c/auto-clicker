@@ -1,13 +1,13 @@
 @echo off
+:: Build Auto Clicker as a single .exe using PyInstaller
+:: Requirements: Python 3.8+ with tkinter, ctypes (stdlib), pynput
+
 echo Installing dependencies...
-pip install pyinstaller
+pip install pyinstaller pynput
+
+echo Building...
+pyinstaller --onefile --windowed --name AutoClicker auto_clicker.py
 
 echo.
-echo Building executable...
-pyinstaller --onefile --name AutoClicker --noconfirm auto_clicker.py
-
-echo.
-echo Done! Executable is at: dist\AutoClicker.exe
-echo.
-echo If you see a Windows security warning on first run, click 'More info' then 'Run anyway'.
+echo Done! Executable is in dist\AutoClicker.exe
 pause

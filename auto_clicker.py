@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """
-Auto Clicker — clean rewrite
+Auto Clicker
 - Press any key to set hotkey
 - Hold mode or Toggle mode
-- pynput for keyboard + mouse (works when GUI has focus)
 """
 import ctypes
 import threading
 import time
 import tkinter as tk
 from tkinter import ttk
-from pynput import keyboard, mouse
-from pynput.keyboard import Key, KeyCode
+from pynput import keyboard
 
 PLATFORM = 'windows' if hasattr(ctypes, 'windll') else 'unix'
 
@@ -20,18 +18,15 @@ clicking = False
 cps = 5.0
 mode = 'hold'
 hotkey_name = 'INSERT'
-hotkey_key = 0x2D   # VK_INSERT — will be set from key capture
+hotkey_key = 0x2D   # VK_INSERT
 
 target_x = target_y = None
 click_position_set = False
-
 key_was_down = False
 
-# Capture state (protected by events)
 waiting_for_key = threading.Event()
 captured_key = {}
 
-# Active listener (stopped+restarted on hotkey change)
 _listener = None
 
 # ── Windows mouse ─────────────────────────────────────────────────────────────
@@ -58,9 +53,10 @@ _mouse_ctrl = None
 def unix_click(x, y):
     global _mouse_ctrl
     if _mouse_ctrl is None:
-        _mouse_ctrl = mouse.Controller()
+        from pynput.mouse import Controller, Button
+        _mouse_ctrl = Controller()
     _mouse_ctrl.position = (x, y)
-    _mouse_ctrl.click(mouse.Button.left, 1)
+    _mouse_ctrl.click(Button.left, 1)
 
 # ── Click worker ───────────────────────────────────────────────────────────────
 def click_worker():
@@ -73,13 +69,11 @@ def click_worker():
             else:
                 unix_click(target_x, target_y)
 
-# ── Key name helper ────────────────────────────────────────────────────────────
+# ── Key helpers ────────────────────────────────────────────────────────────────
 def get_vk(key_obj):
-    """Extract virtual key code from a pynput Key or KeyCode."""
     vk = getattr(key_obj, 'vk', None)
     if vk is not None:
         return vk
-    # KeyCode: try .value.vk
     val = getattr(key_obj, 'value', None)
     if val is not None:
         vk = getattr(val, 'vk', None)
@@ -92,8 +86,7 @@ for i in range(0x30, 0x3A):   VK_NAMES[i] = chr(i)
 for i in range(0x41, 0x5B):   VK_NAMES[i] = chr(i)
 for i in range(0x70, 0x88):   VK_NAMES[i] = f'F{i - 0x70 + 1}'
 VK_NAMES.update({
-    0x08: 'BACKSPACE', 0x09: 'TAB', 0x0D: 'ENTER', 0x1B: 'ESC',
-    0x20: 'SPACE',
+    0x08: 'BACKSPACE', 0x09: 'TAB', 0x0D: 'ENTER', 0x1B: 'ESC', 0x20: 'SPACE',
     0x21: 'PAGE UP', 0x22: 'PAGE DOWN', 0x23: 'END',  0x24: 'HOME',
     0x25: 'LEFT', 0x26: 'UP', 0x27: 'RIGHT', 0x28: 'DOWN',
     0x2D: 'INSERT', 0x2E: 'DELETE',
@@ -103,7 +96,6 @@ def key_to_str(key_obj):
     vk = get_vk(key_obj)
     if vk is not None:
         return VK_NAMES.get(vk, f'KEY_{vk}')
-    # special key by name
     name = getattr(key_obj, 'name', None)
     if name:
         return name.upper()
@@ -115,10 +107,7 @@ def on_press(key):
     global hotkey_key, hotkey_name
 
     vk = get_vk(key)
-    if vk is None:
-        return
-
-    if vk != hotkey_key:
+    if vk is None or vk != hotkey_key:
         return
 
     if mode == 'hold':
@@ -130,7 +119,6 @@ def on_press(key):
             root.after(0, lambda: status_label.config(
                 text=f"▶ clicking @ {cps:.1f} CPS  [{hotkey_name}]"))
     else:
-        # toggle
         if not key_was_down:
             key_was_down = True
             if not clicking:
@@ -145,16 +133,13 @@ def on_press(key):
 
 def on_release(key):
     global clicking, key_was_down
-
     vk = get_vk(key)
     if vk is None or vk != hotkey_key:
         return
-
     key_was_down = False
     if mode == 'hold':
         clicking = False
-        root.after(0, lambda: status_label.config(
-            text="⏹ idle  — hold hotkey to click"))
+        root.after(0, lambda: status_label.config(text="⏹ idle  — hold hotkey to click"))
 
 # ── Listener lifecycle ────────────────────────────────────────────────────────
 def stop_listener():
@@ -166,21 +151,13 @@ def stop_listener():
 def start_listener():
     global _listener
     stop_listener()
-    _listener = keyboard.Listener(
-        on_press=on_press,
-        on_release=on_release,
-        suppress=False)
+    _listener = keyboard.Listener(on_press=on_press, on_release=on_release, suppress=False)
     _listener.start()
 
-# ── Capture any key (blocks until key pressed) ─────────────────────────────────
+# ── Capture any key ─────────────────────────────────────────────────────────────
 def capture_key():
-    """
-    Runs in a thread. Waits for exactly one key press, stores it in
-    captured_key dict, then exits. Safe to call multiple times.
-    """
     captured_key.clear()
     evt = threading.Event()
-
     def _on_press(key):
         vk = get_vk(key)
         if vk is None:
@@ -188,14 +165,12 @@ def capture_key():
         captured_key['vk'] = vk
         captured_key['name'] = key_to_str(key)
         evt.set()
-
     def _on_release(key):
         pass
-
-    _l = keyboard.Listener(on_press=_on_press, on_release=_on_release, suppress=False)
-    _l.start()
+    l = keyboard.Listener(on_press=_on_press, on_release=_on_release, suppress=False)
+    l.start()
     evt.wait()
-    _l.stop()
+    l.stop()
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
 root = tk.Tk()
@@ -233,7 +208,7 @@ mode_var = tk.StringVar(value='hold')
 def on_mode_changed():
     global mode, clicking, key_was_down
     mode = mode_var.get()
-    key_was_down = False   # reset so next press is always clean
+    key_was_down = False
     if not clicking:
         desc = "hold hotkey to click, release to stop" if mode == 'hold' else "press hotkey to toggle on/off"
         status_label.config(text=f"Mode: {desc}")
@@ -263,9 +238,9 @@ def _do_capture():
     global hotkey_key, hotkey_name
     hotkey_key = vk
     hotkey_name = name
-    stop_listener()      # stop old listener (if any)
-    time.sleep(0.1)     # small delay to ensure old listener fully stopped
-    start_listener()     # start new listener with updated hotkey
+    stop_listener()
+    time.sleep(0.1)
+    start_listener()
     root.after(0, lambda: hotkey_display.config(text=name))
     root.after(0, lambda: listen_label.config(text=""))
 
